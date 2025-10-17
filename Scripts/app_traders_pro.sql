@@ -1,9 +1,11 @@
 -- #### 2. Assumptions
 SELECT *
 FROM play_store_apps
+ORDER BY name
 
 SELECT *
 FROM app_store_apps
+ORDER BY name
 
 
 
@@ -43,18 +45,48 @@ FROM app_store_apps
 -- c. Submit a report based on your findings. All analysis work must be done using PostgreSQL, however you may export query results to create charts in Excel for your report. 
 
 
-SELECT app.name,
-		app.price,
-		app.rating,
-CASE
-	WHEN app.price < 1.00 THEN 10000.00
-	ELSE app.price * 10000
-END AS purchase_price
-FROM app_store_apps AS app
-LEFT JOIN
-	play_store_apps AS play
-ON app.name = play.name
-ORDER BY purchase_price
-	
 
+
+
+
+SELECT a.name, a.rating, p.price
+FROM app_store_apps a
+INNER JOIN
+	play_store_apps p ON a.name = p.name
+ORDER BY a.rating DESC
+	
+-- Apps that are on both stores	
+
+SELECT
+    name,
+    CASE
+        WHEN app_rating >= play_rating THEN app_rating
+        ELSE play_rating
+    END AS rating,
+    CASE
+        WHEN 
+            (CASE
+                WHEN app_rating >= play_rating THEN app_rating
+                ELSE play_rating
+             END) = 0 THEN 1
+        WHEN 
+            (CASE
+                WHEN app_rating >= play_rating THEN app_rating
+                ELSE play_rating
+             END) = 1 THEN 3
+        ELSE FLOOR(
+            (CASE
+                WHEN app_rating >= play_rating THEN app_rating
+                ELSE play_rating
+             END) * 2
+        )
+    END AS lifespan_years
+FROM (
+    SELECT 
+        a.name,
+        a.rating AS app_rating,
+        p.rating AS play_rating
+    FROM app_store_apps a
+    INNER JOIN play_store_apps p ON a.name = p.name
+) AS joined_apps;
 
