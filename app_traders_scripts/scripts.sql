@@ -31,7 +31,7 @@
 
 -- c. Submit a report based on your findings. All analysis work must be done using PostgreSQL, however you may export query results to create charts in Excel for your report. 
 
--- my note: I need name od apps on both table, rating, price range 
+-- my note: I need name from apps on both table, rating, price range, content_rating, genrs 
 
 select *
 from app_store_apps
@@ -46,13 +46,66 @@ intersect
 select name
 from play_store_apps 
 
-with appstore as(
-     select name,
-	        a.rating as a_rating
-			p.rating as p_rating
-			cast(replace(p.price, '$', '') as numeric) as p.price,
-			cast(replace(a.price, '$','') as numeric) as a.price
-	        
-) 
-     
 
+with appstore as(
+     select ap name,
+	        a.rating as a_rating,
+			p.rating as p_rating,
+			cast(replace(p.price, '$', '') as numeric) as p_price,
+			a.price as a_price,
+			p.content_rating
+	  from (
+	      select name 
+          from app_store_apps
+          intersect
+          select name
+          from play_store_apps 
+          ) as ap
+left join app_store_apps as a
+on a.name = ap.name
+left join play_store_apps as p
+on p.name = ap.name)
+
+SELECT
+	name,
+	
+	ROUND((a_rating + p_rating /2) /0.5,0) *0.5 as avg_rating,
+	(ROUND(((p_rating + a_rating)/2) /0.5,0*2) + 1) as lifespan	
+	FROM apps_store_apps
+inner join play_store_apps
+WHERE rating IS NOT NULL
+ORDER BY longevity DESC
+
+
+
+SELECT
+    name,
+    CASE
+        WHEN app_rating >= play_rating THEN app_rating
+        ELSE play_rating
+    END AS rating,
+    CASE
+        WHEN
+            (CASE
+                WHEN app_rating >= play_rating THEN app_rating
+                ELSE play_rating
+             END) = 0 THEN 1
+        WHEN
+            (CASE
+                WHEN app_rating >= play_rating THEN app_rating
+                ELSE play_rating
+             END) = 1 THEN 3
+        ELSE FLOOR(
+            (CASE
+                WHEN app_rating >= play_rating THEN app_rating
+                ELSE play_rating
+             END) * 2
+        )
+    END AS lifespan_years
+FROM (
+    SELECT
+        a.name,
+        a.rating AS app_rating,
+        p.rating AS play_rating
+    FROM app_store_apps a
+    INNER JOIN play_store_apps p ON a.name = p.name
