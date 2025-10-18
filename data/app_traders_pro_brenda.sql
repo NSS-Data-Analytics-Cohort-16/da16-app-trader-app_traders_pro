@@ -288,6 +288,10 @@ SELECT
 	on a.name = p.name
 GROUP BY a.name, a.rating, p.rating 
 
+----------------------------------------------
+FINAL QUERY
+______________________________________________
+
 with appstore as (
     select
         ap.name,
@@ -342,5 +346,5 @@ select
 from appstore
 group by name, p_rating, a_rating, p_price, a_price, content_rating, primary_genre, secondary_genre
 having ROUND((p_rating + a_rating) / 2, 1) >= 3.0
-order by lifespan_profit DESC
+order by lifespan_profit DESC, content_rating ASC
 limit 10;
