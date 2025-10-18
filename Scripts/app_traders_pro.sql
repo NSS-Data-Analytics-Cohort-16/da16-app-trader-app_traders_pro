@@ -90,3 +90,228 @@ FROM (
     INNER JOIN play_store_apps p ON a.name = p.name
 ) AS joined_apps;
 
+
+---Dennis' query---
+
+WITH cross_platform AS (
+	SELECT
+		p.name AS play_store,
+		a.name AS app_store,
+		p.rating AS play_rating,
+		ROUND((p.rating / 0.5) +1, 2) AS play_longevity,
+		a.rating AS app_rating,
+		ROUND((a.rating / 0.5) +1, 2) AS app_longevity,
+		ROUND(AVG(p.rating + a.rating)/ 2, 1) AS avg_rating,
+		ROUND((( (p.rating + a.rating)/ 2)/ 0.5) +1,2) AS avg_longevity
+	FROM play_store_apps p
+	FULL OUTER JOIN app_store_apps a
+	USING (name)
+	WHERE p.rating IS NOT NULL
+		AND a.rating IS NOT NULL
+	GROUP BY p.name, a.name, p.rating, a.rating
+)
+SELECT
+	play_store,
+	play_rating,
+	app_store,
+	app_rating,
+	avg_rating,
+	ROUND (AVG(avg_longevity), 2) AS overall_avg_longevity
+FROM cross_platform
+GROUP BY play_store, play_rating, app_store, app_rating, avg_rating
+ORDER BY overall_avg_longevity DESC;
+
+--- apple store purchase price---
+SELECT
+	name, 
+	price, 
+	CASE WHEN
+	price::numeric <= 1.00::numeric then 10000.0
+	WHEN
+	price::numeric > 1.00::numeric then price::numeric * 10000
+	ELSE '0'
+	END AS pur_price
+	FROM app_store_apps
+	
+	---play store purchase price---
+	SELECT
+		name,
+		price,
+		CASE WHEN
+			REPLACE(price,'$','')::numeric <= 1.00::numeric then 10000.0
+			WHEN
+			REPLACE(price,'$','')::numeric <= 1.00::numeric then REPLACE(price, '$','')::numeric *10000.0
+			ELSE '0'
+			END AS pur_price
+			FROM play_store_apps
+---combine tables---
+
+
+SELECT
+    name,
+    REPLACE(price, '$', '')::numeric AS price,
+    'playstore' AS store,
+    CASE 
+        WHEN REPLACE(price, '$', '')::numeric <= 1.00 THEN 10000.0
+        ELSE REPLACE(price, '$', '')::numeric * 10000.0
+    END AS purchase_price,
+    CASE 
+        WHEN name IN (
+            SELECT name FROM app_store_apps
+            INTERSECT
+            SELECT name FROM play_store_apps
+        ) THEN 2
+        ELSE 1
+    END AS store_count,
+    1000 AS per_month
+
+FROM play_store_apps
+
+UNION
+
+SELECT
+    name,
+    price,
+    'appstore' AS store,
+    CASE
+        WHEN price <= 1.00 THEN 10000.0
+        ELSE price * 10000.0
+    END AS purchase_price,
+    CASE 
+        WHEN name IN (
+            SELECT name FROM app_store_apps
+            INTERSECT
+            SELECT name FROM play_store_apps
+        ) THEN 2
+        ELSE 1
+    END AS store_count,
+    1000 AS per_month
+
+FROM app_store_apps
+
+ORDER BY price DESC, purchase_price DESC
+
+----life span of app and total revenue---
+
+WITH shared_apps AS (
+    SELECT name FROM app_store_apps
+    INTERSECT
+    SELECT name FROM play_store_apps
+),
+
+shared_details AS (
+    SELECT
+        ap.name,
+        p.rating AS p_rating,
+        a.rating AS a_rating,
+        CAST(REPLACE(p.price, '$', '') AS numeric) AS p_price,
+        a.price AS a_price,
+        p.content_rating,
+        a.primary_genre,
+        p.genres AS secondary_genre
+    FROM shared_apps ap
+    LEFT JOIN play_store_apps p ON p.name = ap.name
+    LEFT JOIN app_store_apps a ON a.name = ap.name
+),
+
+both_store_data AS (
+    SELECT
+        name,
+        'both' AS store,
+        GREATEST(p_price, a_price) AS price,
+        ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 AS avg_rating,
+        (ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1 AS lifespan,
+        CASE
+            WHEN GREATEST(p_price, a_price) <= 1 THEN 10000
+            ELSE GREATEST(p_price, a_price) * 10000
+        END::numeric AS purchase_price,
+        1000::numeric AS marketing_cost,
+        ((ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1) * 12000 AS total_marketing_cost,
+        CASE
+            WHEN GREATEST(p_price, a_price) <= 1 THEN 10000
+            ELSE GREATEST(p_price, a_price) * 10000
+        END + ((ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1) * 12000 AS total_app_cost,
+        (
+            ((ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1) *
+            CASE
+                WHEN p_rating IS NOT NULL AND a_rating IS NOT NULL THEN 10000
+                WHEN p_rating IS NOT NULL OR a_rating IS NOT NULL THEN 5000
+                ELSE 0
+            END * 12
+        ) - (
+            CASE
+                WHEN GREATEST(p_price, a_price) <= 1 THEN 10000
+                ELSE GREATEST(p_price, a_price) * 10000
+            END + ((ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1) * 1000 * 12
+        ) AS lifespan_profit,
+        content_rating,
+        primary_genre,
+        secondary_genre
+    FROM shared_details
+    WHERE ROUND((p_rating + a_rating) / 2, 1) >= 3.0
+),
+
+single_store_data AS (
+    (
+        SELECT
+            name,
+            'playstore' AS store,
+            REPLACE(price, '$', '')::numeric AS price,
+            NULL::numeric AS avg_rating,
+            NULL::numeric AS lifespan,
+            CASE 
+                WHEN REPLACE(price, '$', '')::numeric <= 1.00 THEN 10000.0
+                ELSE REPLACE(price, '$', '')::numeric * 10000.0
+            END::numeric AS purchase_price,
+            1000::numeric AS marketing_cost,
+            NULL::numeric AS total_marketing_cost,
+            NULL::numeric AS total_app_cost,
+            NULL::numeric AS lifespan_profit,
+            NULL::text AS content_rating,
+            NULL::text AS primary_genre,
+            NULL::text AS secondary_genre
+        FROM play_store_apps
+        WHERE name NOT IN (SELECT name FROM shared_apps)
+    )
+
+    UNION ALL
+
+    (
+        SELECT
+            name,
+            'appstore' AS store,
+            price::numeric AS price,
+            NULL::numeric AS avg_rating,
+            NULL::numeric AS lifespan,
+            CASE
+                WHEN price <= 1.00 THEN 10000.0
+                ELSE price * 10000.0
+            END::numeric AS purchase_price,
+            1000::numeric AS marketing_cost,
+            NULL::numeric AS total_marketing_cost,
+            NULL::numeric AS total_app_cost,
+            NULL::numeric AS lifespan_profit,
+            NULL::text AS content_rating,
+            NULL::text AS primary_genre,
+            NULL::text AS secondary_genre
+        FROM app_store_apps
+        WHERE name NOT IN (SELECT name FROM shared_apps)
+    )
+)
+
+-- Final combined output
+SELECT *
+FROM both_store_data
+
+UNION ALL
+
+SELECT *
+FROM single_store_data
+
+ORDER BY lifespan_profit DESC
+
+
+
+
+
+
