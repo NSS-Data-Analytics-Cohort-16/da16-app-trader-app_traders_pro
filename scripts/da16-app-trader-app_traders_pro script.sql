@@ -197,61 +197,63 @@ ORDER BY price DESC, purchase_price DESC
 
 -------------------------------------
 
-with appstore as (
-    select
+WITH appstore AS (
+    SELECT
         ap.name,
         p.rating as p_rating,
         a.rating as a_rating,
-        cast(replace(p.price, '$', '') as numeric) as p_price,
-        a.price as a_price,
+        CAST(REPLACE(p.price, '$', '') AS numeric) AS p_price,
+        a.price AS a_price,
         p.content_rating,
         a.primary_genre,
-        p.genres as secondary_genre
-    from (
-        select name
-        from app_store_apps
-        intersect
-        select name
-        from play_store_apps ) AS ap
+        p.genres AS secondary_genre
+    FROM (
+        SELECT name
+        FROM app_store_apps
+        INTERSECT
+        SELECT name
+        FROM play_store_apps ) AS ap
     LEFT JOIN play_store_apps AS p ON p.name = ap.name
-    LEFT JOIN app_store_apps AS a ON a.name = ap.name)
-	
-select
+    LEFT JOIN app_store_apps AS a ON a.name = ap.name)	
+SELECT
     name,
     ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 AS avg_rating,
     (ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1 AS lifespan,
-    greatest(p_price, a_price) AS max_price,
-    case
-        when greatest(p_price, a_price) <= 1 then 10000
-        else greatest(p_price, a_price) * 10000
-    end as purchase_price,
-    case
-        when p_rating is not null and a_rating is not null then 10000
-        when p_rating is not null or a_rating is not null then 5000
-        else 0
-    end as monthly_earning,
+    GREATEST(p_price, a_price) AS max_price,
+    CASE
+        WHEN GREATEST(p_price, a_price) <= 1 THEN 10000
+        ELSE GREATEST(p_price, a_price) * 10000
+    END AS purchase_price,
+    CASE
+        WHEN p_rating IS NOT NULL AND a_rating IS NOT NULL THEN 10000
+        WHEN p_rating IS NOT NULL OR a_rating IS NOT NULL THEN 5000
+        ELSE 0
+    END AS monthly_earning,
     1000 AS marketing_cost,
     (
         ((ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1) *
-        case
-            when p_rating is not null and a_rating is not null then 10000
-            when p_rating is not null or a_rating is not null then 5000
+        CASE
+            WHEN p_rating IS NOT NULL AND a_rating IS NOT NULL THEN 10000
+            WHEN p_rating IS NOT NULL OR a_rating IS NOT NULL THEN 5000
             ELSE 0
         END * 12
     ) -
-    case
-        when greatest(p_price, a_price) <= 1 then 10000
-        else greatest(p_price, a_price) * 10000
-    end -
+    CASE
+        WHEN GREATEST(p_price, a_price) <= 1 THEN 10000
+        ELSE GREATEST(p_price, a_price) * 10000
+    END -
     (1000 * 12 * ((ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1)) AS lifespan_profit,
-    content_rating,
+
+	
+	content_rating,
     primary_genre,
     secondary_genre,
     'both' AS store
-from appstore
-group by name, p_rating, a_rating, p_price, a_price, content_rating, primary_genre, secondary_genre
-having ROUND((p_rating + a_rating) / 2, 1) >= 3.0
-order by lifespan_profit DESC
+	
+FROM appstore
+GROUP BY name, p_rating, a_rating, p_price, a_price, content_rating, primary_genre, secondary_genre
+HAVING ROUND((p_rating + a_rating) / 2, 1) >= 3.0
+ORDER BY lifespan_profit DESC
 --limit 25;
 
 -- #### 3. Deliverables
