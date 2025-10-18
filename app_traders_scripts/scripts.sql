@@ -47,65 +47,139 @@ select name
 from play_store_apps 
 
 
+
 with appstore as(
-     select ap name,
+     select ap.name,
 	        a.rating as a_rating,
 			p.rating as p_rating,
 			cast(replace(p.price, '$', '') as numeric) as p_price,
 			a.price as a_price,
-			p.content_rating
+			p.content_rating,
+			a.primary_genre, 
+			p.genres 
 	  from (
-	      select name 
-          from app_store_apps
-          intersect
-          select name
-          from play_store_apps 
+	      select a.name 
+          from app_store_apps as a
+          union
+          select p.name
+          from play_store_apps as p
           ) as ap
 left join app_store_apps as a
 on a.name = ap.name
 left join play_store_apps as p
 on p.name = ap.name)
-
+select 
+appstore.*,
+greatest(a_price, p_price)  as high_price,
+    case when greatest(a_price, p_price) <= 1 then 10000
+	     else greatest(a_price, p_price)* 10000
+		 end as purchase_price		 
+from appstore;
+------------
 SELECT
-	name,
+	a.name,
+	case when a.rating is not null and a.rating is not null 
+	     then 10000
+		 when a.rating is not null and p.rating is not null
+		 then 5000  else 0  
+		 end *12   as monthly_earning,
+		        1000 as marketing_cost,
+	 			
+	ROUND((a.rating + p.rating /2) /0.5,0) *0.5 as avg_rating,
+	(ROUND(((a.rating + p.rating)/2) /0.5, 0)*0.5*2) + 1 as lifespan,
+	(1000 * 12 * ((ROUND(((p.rating + a.rating) / 2) / 0.5, 0) * 0.5 * 2) + 1)) AS lifespan_year
+	FROM app_store_apps as a
+	left join play_store_apps as p
+	on a.name = p.name
+	where ROUND((p.rating + a.rating) / 2, 1) >= 3.0
+
+---------------
+WITH cross_platform AS (
+	SELECT
+		p.name AS play_store,
+		a.name AS app_store,
+		p.rating AS play_rating,
+		ROUND((p.rating / 0.5) +1, 2) AS play_longevity,
+		a.rating AS app_rating,
+		ROUND((a.rating / 0.5) +1, 2) AS app_longevity,
+		ROUND(AVG(p.rating + a.rating)/ 2, 1) AS avg_rating,
+		ROUND((( (p.rating + a.rating)/ 2)/ 0.5) +1,2) AS avg_longevity
+	FROM play_store_apps p
+	FULL OUTER JOIN app_store_apps a
+	USING (name)
+	WHERE p.rating IS NOT NULL
+		AND a.rating IS NOT NULL
+	GROUP BY p.name, a.name, p.rating, a.rating
+)
+SELECT
+	play_store,
+	play_rating,
+	app_store,
+	app_rating,
+	avg_rating,
+	ROUND (AVG(avg_longevity), 2) AS overall_avg_longevity
+FROM cross_platform
+GROUP BY play_store, play_rating, app_store, app_rating, avg_rating
+ORDER BY overall_avg_longevity DESC;
+
+-----------------------------
+
+with appstore as (
+    select
+        ap.name,
+        p.rating as p_rating,
+        a.rating as a_rating,
+        cast(replace(p.price, '$', '') as numeric) as p_price,
+        a.price as a_price,
+        p.content_rating,
+        a.primary_genre,
+        p.genres as secondary_genre
+    from (
+        select name
+        from app_store_apps
+        union
+        select name
+        from play_store_apps ) AS ap
+    LEFT JOIN play_store_apps AS p ON p.name = ap.name
+    LEFT JOIN app_store_apps AS a ON a.name = ap.name)
 	
-	ROUND((a_rating + p_rating /2) /0.5,0) *0.5 as avg_rating,
-	(ROUND(((p_rating + a_rating)/2) /0.5,0*2) + 1) as lifespan	
-	FROM apps_store_apps
-inner join play_store_apps
-WHERE rating IS NOT NULL
-ORDER BY longevity DESC
-
-
-
-SELECT
+select
     name,
-    CASE
-        WHEN app_rating >= play_rating THEN app_rating
-        ELSE play_rating
-    END AS rating,
-    CASE
-        WHEN
-            (CASE
-                WHEN app_rating >= play_rating THEN app_rating
-                ELSE play_rating
-             END) = 0 THEN 1
-        WHEN
-            (CASE
-                WHEN app_rating >= play_rating THEN app_rating
-                ELSE play_rating
-             END) = 1 THEN 3
-        ELSE FLOOR(
-            (CASE
-                WHEN app_rating >= play_rating THEN app_rating
-                ELSE play_rating
-             END) * 2
-        )
-    END AS lifespan_years
-FROM (
-    SELECT
-        a.name,
-        a.rating AS app_rating,
-        p.rating AS play_rating
-    FROM app_store_apps a
-    INNER JOIN play_store_apps p ON a.name = p.name
+    ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 AS avg_rating,
+    (ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1 AS lifespan,
+    greatest(p_price, a_price) AS max_price,
+    case
+        when greatest(p_price, a_price) <= 1 then 10000
+        else greatest(p_price, a_price) * 10000
+    end as purchase_price,
+    case
+        when p_rating is not null and a_rating is not null then 10000
+        when p_rating is not null or a_rating is not null then 5000
+        else 0
+    end as monthly_earning,
+    1000 AS marketing_cost,
+    (
+        ((ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1) * 
+        case
+            when p_rating is not null and a_rating is not null then 10000
+            when p_rating is not null or a_rating is not null then 5000
+            ELSE 0
+        END * 12 
+    ) - 
+    case
+        when greatest(p_price, a_price) <= 1 then 10000
+        else greatest(p_price, a_price) * 10000
+    end - 
+    (1000 * 12 * ((ROUND(((p_rating + a_rating) / 2) / 0.5, 0) * 0.5 * 2) + 1)) AS lifespan_profit, 
+    content_rating,
+    primary_genre,
+    secondary_genre,
+    'both' AS store
+from appstore
+group by name, p_rating, a_rating, p_price, a_price, content_rating, primary_genre, secondary_genre
+having ROUND((p_rating + a_rating) / 2, 1) >= 3.0
+order by lifespan_profit DESC
+limit 10;
+    
+   
+	
